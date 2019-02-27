@@ -4,8 +4,10 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
+	"time"
 )
 
 // Problem store the problem information
@@ -17,6 +19,8 @@ type Problem struct {
 func main() {
 
 	csvFileName := flag.String("csv", "problems.csv", "Archivo csv con el formato: 'question,answer'")
+	limitToQuiz := flag.Int("limit", 30, "Limite de tiempo para el quiz")
+	shuffleQuiz := flag.Bool("shuffle", false, "Indica si se barajéan las preguntas para que estás se muestren aleatoriamente")
 	flag.Parse()
 
 	file, err := os.Open(*csvFileName)
@@ -32,23 +36,38 @@ func main() {
 		os.Exit(1)
 	}
 
-	problems := parseCSVProblems(csvProblems)
+	problems := parseCSVProblems(csvProblems, *shuffleQuiz)
+
+	timer := time.NewTimer(time.Duration(*limitToQuiz) * time.Second)
 
 	corrects := 0
 	var answer string
+	answerChan := make(chan string)
 	for index, problem := range problems {
 		fmt.Printf("[%d] %s = ", index+1, problem.question)
-		fmt.Scanf("%s", &answer)
-		if answer == problem.answer {
-			corrects++
+
+		go func() {
+			fmt.Scanf("%s", &answer)
+			answerChan <- answer
+		}()
+
+		select {
+		case <-timer.C:
+			fmt.Printf("\nTu puntaje fué: %d de: %d\n", corrects, len(problems))
+			return
+		case answer := <-answerChan:
+			if answer == problem.answer {
+				corrects++
+			}
 		}
+
 	}
 
 	fmt.Printf("Tu puntaje fué: %d de: %d\n", corrects, len(problems))
 
 }
 
-func parseCSVProblems(csvProblems [][]string) []Problem {
+func parseCSVProblems(csvProblems [][]string, shuffle bool) []Problem {
 
 	problems := make([]Problem, len(csvProblems))
 
@@ -58,6 +77,12 @@ func parseCSVProblems(csvProblems [][]string) []Problem {
 			answer:   strings.TrimSpace(csvProblems[i][1]),
 		}
 	}
+
+	if shuffle {
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(problems), func(i, j int) { problems[i], problems[j] = problems[j], problems[i] })
+	}
+
 	return problems
 
 }
